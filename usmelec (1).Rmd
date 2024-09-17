@@ -1,0 +1,597 @@
+---
+title: "Monthly US electricity Production "
+author: "Giovanni Barnaba, Gianni Valena, Alessandro Vimercati"
+output: word_document
+date: '17 Febrary 2023'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Libraries
+library(TSA)
+library(forecast)
+library (tseries)
+library(knitr)
+```
+
+# 1. Introduction
+
+This dataset takes into consideration the monthly US electricity production (in millions of kilowatt hours) from the january 1973 to Dicember 2005; electricity generated which is considered in the following dataset considers electricity of all kinds as coal, natural gas, nuclear, petroleum, and wind.
+
+```{r cars}
+data <- data("electricity")
+length(electricity)
+```
+
+```{r}
+plot(electricity, col = "black")
+```
+# 2. Preliminary Analysis
+
+From this very first plot we can see that the pattern of our time series has different widths so we can apply a logarithm transformation to obtain a series with the same widths.
+This procedure helps us to stabilize the variance of the time series.\
+We have also decided to center the series to zero.\
+
+For further analysis we decided to cut off the last ten observations in order to use them later to check the goodness of the forecasting process.
+
+```{r}
+y = electricity
+y_cut = electricity[0:386]
+y_ = log(y_cut)
+mean_log = mean(y_)
+y_log = y_ - mean_log 
+y_log = as.vector(y_log)
+plot(y_log,type="l",main = "Spot seasonality")
+abline(v=c((0:200)*12),col="blue",lwd=1,lty=4)
+```
+
+From the plot above we can suggest a seasonality of 12 months, to confirm our hypotesis we will proceed with further analysis.\
+Let's now start to analyze all the components of our Times series.
+
+```{r}
+#decompose 
+plot(decompose(y))
+```
+
+We can focus in deep on the linear trend in order to have a visualization of it.
+
+```{r}
+n = length(y_log)
+T=1:n 
+trend <- lm (y_log~T)
+#summary(trend)
+#trend$coefficients
+alpha <- trend$coefficients[1] #is beta0
+beta <- trend$coefficients[2] #is beta1 in the notes
+#c(alpha,beta)
+plot(y_log,main="show the trend",xlab="Months",ylab="z_{t}",xlim=c(1,n),type="l")
+abline(alpha,beta,col="blue",lwd=3,lty=3)
+```
+
+# 3. Auto Correlation Function
+
+```{r}
+par(mfrow=c(1,2))
+acf(y_log,lag.max = 100, main ="ACF with lag max =100")
+acf(y_log,lag.max = 400, main ="ACF with lag max =400")
+```
+
+```{r}
+pacf(y_log,lag.max = 100, main = "Partial Autocorrelation Function")
+```
+
+\
+The ACF plot confirm our previous hypothesis on the seasonality and also suggest, with its behavior, an autoregression model for our times series analysis.
+Since we have a tail off in the ACF we start modelling an Autoregressive model and we will chose the values p of the AR model by looking at the cut off in the PACF.\
+In general the PACF suggest the order of the AR model to be used in the analysis, looking at plot we have decided to focus on order 1, 4 and 5.\
+
+
+# 4. Model Specification and Comparison
+
+
+## 4.1 Find the best value for "p"
+During the following analysis for finding the value of "p" we have performed some important tests (Normality and independence of the residual and rectangular scatter around zero) that will be discussed in the "COMPARISON" section below.
+### 4.1.1 ARIMA(1,0,0)
+
+Let's start with a ARIMA(1,0,0)
+
+```{r}
+ARIMA100 = arima(y_log,order=c(1,0,0),seasonal=list(order=c(1,0,0),period=12),method='ML')
+ARIMA100
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(ARIMA100$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA100$residuals,main="Histogram of the residuals ARIMA100",freq = F)
+lines(density(ARIMA100$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA100$residuals),sd(ARIMA100$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA100$residuals)
+qqline(ARIMA100$residuals)
+
+acf(ARIMA100$residuals, lag.max = 50)
+```
+We are now going to preform some normality test, that will be also analyze in the last section "COMPARISON":
+
+```{r}
+JB_100 = jarque.bera.test(ARIMA100$residuals) 
+SW_100 = shapiro.test(ARIMA100$residuals) 
+```
+
+```{r}
+RMSE1 = sqrt(mean(ARIMA100$residuals^2,na.remove=TRUE))
+MAE1 =mean(abs(ARIMA100$residuals))
+```
+
+### 4.1.2 ARIMA(4,0,0)
+
+```{r}
+ARIMA400 = arima(y_log,order=c(4,0,0),seasonal=list(order=c(4,0,0),period=12),method='ML')
+ARIMA400
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(ARIMA400$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA400$residuals,main="Histogram of the residuals ARIMA400",freq = F)
+lines(density(ARIMA400$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA400$residuals),sd(ARIMA400$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA400$residuals)
+qqline(ARIMA400$residuals)
+
+acf(ARIMA400$residuals,lag.max=50,main="autocorrelation of the residuals ARIMA400")
+```
+
+We are now going to preform some normality test:
+
+```{r}
+JB_400 = jarque.bera.test(ARIMA400$residuals)
+SW_400 = shapiro.test(ARIMA400$residuals) 
+```
+
+```{r}
+RMSE4 = sqrt(mean(ARIMA400$residuals^2,na.remove=TRUE))
+MAE4 =mean(abs(ARIMA400$residuals))
+```
+
+### 4.1.3 ARIMA(5,0,0)
+
+```{r}
+ARIMA500 = arima(y_log,order=c(5,0,0),seasonal=list(order=c(5,0,0),period=12),method='ML')
+ARIMA500
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(ARIMA500$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA500$residuals,main="Histogram of the residuals ARIMA500",freq = F)
+lines(density(ARIMA500$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA500$residuals),sd(ARIMA500$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA500$residuals)
+qqline(ARIMA500$residuals)
+
+acf(ARIMA500$residuals,lag.max=50,main="autocorrelation of the residuals ARIMA500")
+
+```
+
+We are now going to preform some normality test:
+
+```{r}
+JB_500 = jarque.bera.test(ARIMA400$residuals)
+SW_500 = shapiro.test(ARIMA500$residuals) 
+```
+
+
+```{r}
+RMSE5 = sqrt(mean(ARIMA500$residuals^2,na.remove=TRUE))
+MAE5 =mean(abs(ARIMA500$residuals))
+```
+
+### 4.1.4 COMPARISON
+
+```{r}
+# Create a data frame to summarize the results 
+my_df <- data.frame(
+  model = c("ARIMA100", "ARIMA400", "ARIMA500"),
+  MAE = c(MAE1, MAE4, MAE5),
+  RSME = c(RMSE1,RMSE4,RMSE5) ,
+  AIC = c(ARIMA100$aic, ARIMA400$aic , ARIMA500$aic),
+  SHAPIRO = c(SW_100$p.value , SW_400$p.value , SW_500$p.value),
+  JARQUE =  c(JB_100$p.value, JB_400$p.value , JB_500$p.value)
+)
+# Use knitr::kable to create a formatted table
+kable(my_df, caption = "Summary Table", align = "c")
+```
+Analyzing the residuals of all the above models we can notice that all of them are Normally distributed (we can see this property both from the Normality tests and as from the plots) and they all have a similar autocorrelation of the residuals that is close to zero.\
+To chose the bets model among these ones, we focus on the values of MAE, RSME and AIC. The model which minimizes all of them is the ARIMA(5,0,0).\
+For further analysis we consider as starting point this model.\
+
+
+## 4.2 Find the best parameter for "d"
+We want to plot our time series without seasonality and linear trend with differentiation of order 1 to check if our series will be stationary.
+Let's start removing the seasonality from our Time series
+```{r}
+y_log_diff = diff(y_log,lag = 12)
+plot(y_log_diff,type="l")
+```
+Let's now remove also the linear trend
+```{r}
+y_log_diff_ = diff(y_log_diff)
+plot(y_log_diff_,type="l")
+abline(h=0,col="red")
+```
+Now check through Augmented Dickey-Fuller Test if the series is now stationary:
+```{r}
+#adf test
+adf.test(y_log_diff_,alternative = "stationary", lag(12))
+```
+We have obtained a small p-value so we can reject the null Hypothesis of Non-stationarity.
+### 4.2.1 ARIMA(5,1,0)
+\
+```{r}
+ARIMA510 = arima(y_log,order=c(5,1,0),seasonal=list(order=c(5,1,0),period=12),method='ML')
+ARIMA510
+```
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(ARIMA510$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA510$residuals,main="Histogram of the residuals ARIMA510",freq = F)
+lines(density(ARIMA510$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA510$residuals),sd(ARIMA510$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA510$residuals)
+qqline(ARIMA510$residuals)
+
+acf(ARIMA510$residuals, lag.max = 50)
+```
+
+```{r}
+SW_510 = shapiro.test(ARIMA510$residuals) 
+JB_510 = jarque.bera.test(ARIMA510$residuals) 
+```
+
+```{r}
+RMSE510 = sqrt(mean(ARIMA510$residuals^2,na.remove=TRUE))
+MAE510 =mean(abs(ARIMA510$residuals))
+```
+
+
+### 4.2.3 COMPARISON
+```{r}
+# Create a data frame to summarize the results
+my_df_1 <- data.frame(
+  model = c("ARIMA500", "ARIMA510"),
+  MAE = c(MAE5, MAE510),
+  RSME = c(RMSE5,RMSE510),
+  AIC = c(ARIMA500$aic, ARIMA510$aic ),
+  SHAPIRO = c(SW_500$p.value , SW_510$p.value),
+  JARQUE =  c(JB_500$p.value, JB_510$p.value )
+)
+# Use knitr::kable to create a formatted table
+kable(my_df_1, caption = "Summary Table", align = "c")
+```
+All the residual con be considered independent since all the value of the autocorrelation above the threshold are however very close to it.
+With the analysis just computed we have verified that the changes in the results with $d = 1$ and $d^{\star} = 1$.
+Even if the the residuals are not normally distributed, they are independent (most important feature) and the metrics (MAE, RMSE and AIC ) still have very good values.
+
+
+## 4.3 Find the best parameter for "q"
+### 4.3.1 ARIMA(5,1,1)
+\
+```{r}
+ARIMA511 = arima(y_log,order=c(5,1,1),seasonal=list(order=c(5,1,1),period=12),method='ML')
+ARIMA511
+```
+
+
+```{r}
+par(mfrow = c(2,2))
+
+plot(ARIMA511$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA511$residuals,main="Histogram of the residuals ARIMA511",freq = F)
+lines(density(ARIMA511$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA511$residuals),sd(ARIMA511$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA511$residuals)
+qqline(ARIMA511$residuals)
+
+acf(ARIMA511$residuals,lag.max=50)
+```
+
+```{r}
+SW_511 = shapiro.test(ARIMA511$residuals) 
+JB_511 = jarque.bera.test(ARIMA511$residuals) 
+```
+
+```{r}
+RMSE511 = sqrt(mean(ARIMA511$residuals^2,na.remove=TRUE))
+MAE511 =mean(abs(ARIMA511$residuals))
+```
+
+### 4.3.2 ARIMA(5,1,2)
+```{r}
+ARIMA512= arima(y_log,order=c(5,1,2),seasonal=list(order=c(5,1,2),period=12),method='ML')
+ARIMA512
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(ARIMA512$residuals,type="h")
+lines(rep(0,times=n),type="l",col="red",lwd=2)
+
+hist(ARIMA512$residuals,main="Histogram of the residuals ARIMA512",freq = F)
+lines(density(ARIMA512$residuals),col="blue",lwd=3)
+zz=seq(-0.5,0.5,length=100)
+f.zz=dnorm(zz,mean(ARIMA512$residuals),sd(ARIMA512$residuals))
+lines(zz,f.zz,col="red",lwd=2)
+
+qqnorm(ARIMA512$residuals)
+qqline(ARIMA512$residuals)
+
+acf(ARIMA512$residuals,lag.max=50)
+```
+
+```{r}
+SW_512 = shapiro.test(ARIMA512$residuals) 
+JB_512 = jarque.bera.test(ARIMA512$residuals) 
+```
+
+```{r}
+RMSE512 = sqrt(mean(ARIMA512$residuals^2,na.remove=TRUE))
+MAE512 =mean(abs(ARIMA512$residuals))
+```
+
+### 4.3.3 COMPARISON
+```{r}
+# Create a data frame to summarize the results 
+  my_df_1 <- data.frame(
+    model = c("ARIMA510", "ARIMA511", "ARIMA512"),
+    MAE = c(MAE510, MAE511, MAE512),
+    RSME = c(RMSE510,RMSE511,RMSE512) ,
+    AIC = c(ARIMA510$aic, ARIMA511$aic , ARIMA512$aic),
+    SHAPIRO = c(SW_510$p.value , SW_511$p.value , SW_512$p.value),
+    JARQUE =  c(JB_510$p.value, JB_511$p.value , JB_512$p.value)
+  )
+  # Use knitr::kable to create a formatted table
+  kable(my_df_1, caption = "Summary Table", align = "c")
+```
+We can find out from the graphs above that residuals are about normally distributed even if it is not confirmed by the two tests.\
+One of the most important things to check is the independence of the residual, in our case this property is satisfied.\
+The model with the best values of MAE, RSME and AIC is ARIMA(5,1,1) this model however has not a p-value big enough to confirm the null hypothesis of normality test, so we may have some problem in the estimation of the parameter.\
+
+# 5. Model Fitting
+Let's start plotting the value we have used during the analysis with the final model that we have chosen:
+```{r}
+plot(y_log, type="p", col="blue", ylab="Time Series Value", xlab="Time Step")
+lines((y_log - ARIMA511$residuals), col="red", lty=1)
+legend("topleft", c("Original Data", "Seasonal ARIMA Estimates"), col=c("blue", "red"), lty=c(1,1))
+```
+Since during our analysis we have used a mean adjusted value with a logarithm scale, we have now to re-transform our data in the original scale and remove the mean adjustment.
+```{r}
+plot(exp(y_log + mean_log), type="p", col="blue", ylab="Time Series Value", xlab="Time Step")
+lines(exp((y_log - ARIMA511$residuals)+mean_log), col="red", lty=1)
+legend("topleft", c("Original Data", "Seasonal ARIMA Estimates"), col=c("blue", "red"), lty=c(1,1))
+```
+As we can see with this model we get a quiet accurate fitting of the past values, only the most extreme values are not reached well by the model. 
+
+# 6. Forecast
+Another criteria to determine which model performs well is the forecast procedure. Hence we decided to compare the last three models (that have quiet similar values of the metrics above) through the estimation of the last ten predicted values that we removed at the beginning of the analysis.\
+
+```{r}
+#preliminary data preparation 
+y = electricity
+y_full = electricity
+y_f = log(y_full)
+mean_log_f = mean(y_f)
+y_log_full = y_f - mean_log_f
+y_log_full = as.vector(y_log_full)
+
+#yy is a vector with the last ten observation that we want to predict taken from the full time series
+yy = rep(NA, times = 396)
+for (i in 387:396){
+  yy[i] = y_log_full[i]
+}
+
+```
+
+## 6.1 Forecast ARIMA (5,1,0)
+
+```{r}
+#prediction ARIMA510
+y_shot = y_log[0:386]
+predictions_510 <- predict(ARIMA510, n.ahead =10)
+plot(y_shot, type ="l" )
+lines(yy, type="p", col = "black") #real observations
+lines(predictions_510$pred, col="red", lty=1)
+```
+```{r}
+#predictions_510$pred
+yy_for_510 = rep(NA, times = 396)
+for (i in 1:10){
+  yy_for_510[i+386] = predictions_510$pred[i]
+}
+
+```
+
+Zoom on the predicted value and make a graphical comparison with the original ones:
+```{r}
+# We need Var(one-step-ahead forecast errors)
+# Thus, we compute coefficient psi
+psi=rep(0,times=10)
+psi.0=1
+psi[1]=ARIMA510$coef[1]
+#psi
+var.er=rep(0,times=10)
+var.er[1]=ARIMA510$sigma2
+for (j in 2:10) {
+	var.er[j]=ARIMA510$sigma2*(psi.0+sum(psi[1:(j-1)]^2))
+}
+
+#confidence interval
+# Left (lower bound)
+left_510=rep(NA,times=396)
+for (t in 387:396) {
+	left_510[t]=yy_for_510[t]-1.960*sqrt(var.er[t-386])	#P(|Z|<1.960)=0.95   Z=Standard Normal
+}						            
+# Right (upper bound)
+right_510=rep(NA,times=396)
+for (t in 387:396) {
+	right_510[t]=yy_for_510[t]+1.960*sqrt(var.er[t-386])
+}
+```
+
+```{r}
+#zoom
+plot(y_shot, type = "l", xlim= c(380,400), ylim=c(0.15,0.6),main = "Prediction SARIMA(5,1,0)")
+lines(yy, type="p", col = "black")
+lines(predictions_510$pred, col = "red") #510
+lines(left_510,type="l",col="blue",lwd=2)
+lines(right_510,type="l",col="blue",lwd=2)
+```
+As we can see from the graph above the predictions do not go through the most extreme values even if they are in the confidence interval (confifdence level 95%).\
+```{r}
+## 6.2 Forecast 512
+predictions_512 <- predict(ARIMA512, n.ahead =10)
+plot(y_shot, type ="l" )
+lines(yy, type="p", col = "black")
+lines(predictions_512$pred, col="purple", lty=1)
+```
+```{r}
+#predictions_512$pred
+yy_for_512 = rep(NA, times = 396)
+for (i in 1:10){
+  yy_for_512[i+386] = predictions_512$pred[i]
+}
+
+```
+Zoom on the predicted value and make a graphical comparison with the original ones:
+```{r}
+# We need Var(one-step-ahead forecast errors)
+# Thus, we compute coefficient psi
+psi=rep(0,times=10)
+psi.0=1
+psi[1]=ARIMA512$coef[1]
+#psi
+var.er=rep(0,times=10)
+var.er[1]=ARIMA512$sigma2
+for (j in 2:10) {
+	var.er[j]=ARIMA512$sigma2*(psi.0+sum(psi[1:(j-1)]^2))
+}
+
+#confidence interval
+# Left (lower bound)
+left_512=rep(NA,times=396)
+for (t in 387:396) {
+	left_512[t]=yy_for_512[t]-1.960*sqrt(var.er[t-386])	#P(|Z|<1.960)=0.95   Z=Standard Normal
+}						               
+# Right (upper bound)
+right_512=rep(NA,times=396)
+for (t in 387:396) {
+	right_512[t]=yy_for_512[t]+1.960*sqrt(var.er[t-386])
+}
+```
+
+```{r}
+plot(y_shot, type = "l", xlim= c(380,400), ylim=c(0.15,0.6),main = "Prediction SARIMA(5,1,2)")
+lines(yy, type="p", col = "black")
+lines(predictions_512$pred, col="purple", lty=1)
+lines(left_512,type="l",col="blue",lwd=2)
+lines(right_512,type="l",col="blue",lwd=2)
+```
+
+
+## forecast 511
+```{r}
+predictions_511 <- predict(ARIMA511, n.ahead =10)
+plot(y_shot, type ="l" )
+lines(yy, type="p", col = "black")
+lines(predictions_511$pred, col="green", lty=1)
+```
+```{r}
+#predictions_511$pred
+yy_for_511 = rep(NA, times = 396)
+for (i in 1:10){
+  yy_for_511[i+386] = predictions_511$pred[i]
+}
+
+```
+Zoom on the predicted value and make a graphical comparison with the original ones:
+```{r}
+# We need Var(one-step-ahead forecast errors)
+# Thus, we compute coefficient psi
+psi=rep(0,times=10)
+psi.0=1
+psi[1]=ARIMA511$coef[1]
+#psi
+var.er=rep(0,times=10)
+var.er[1]=ARIMA511$sigma2
+for (j in 2:10) {
+	var.er[j]=ARIMA511$sigma2*(psi.0+sum(psi[1:(j-1)]^2))
+}
+
+#confidence interval
+# Left (lower bound)
+left_511=rep(NA,times=396)
+for (t in 387:396) {
+	left_511[t]=yy_for_511[t]-1.960*sqrt(var.er[t-386])	#P(|Z|<1.960)=0.95   Z=Standard Normal
+}			
+# Right (upper bound)
+right_511=rep(NA,times=396)
+for (t in 387:396) {
+	right_511[t]=yy_for_511[t]+1.960*sqrt(var.er[t-386])
+}
+```
+
+```{r}
+plot(y_shot, type = "l", xlim= c(380,400), ylim=c(0.15,0.6),main = "Prediction SARIMA(5,1,1)")
+lines(yy, type="p", col = "black")
+lines(predictions_511$pred, col="green", lty=1) #511
+lines(left_511,type="l",col="blue",lwd=2)
+lines(right_511,type="l",col="blue",lwd=2)
+```
+
+```{r}
+#comparison
+plot(y_shot, type = "l", xlim= c(387,396), ylim=c(0.15,0.55),main = "comparison of the predictions")
+lines(yy, type="p", col = "black")
+lines(predictions_511$pred, col="green", lwd= 3) #511
+lines(predictions_512$pred, col="purple", lwd=2) #512
+lines(predictions_510$pred, col = "red") #510
+```
+```{r}
+kable(my_predictions, caption = "Predictions Table", align = "c")
+```
+As we can see by all the plots above, we have very good predictions for all the three models because, even if they don't match perfectly the true values, they are very close. In addition we computed also the confidence interval for all the three models and we can state that with a confidence level of 95% all the real values are inside the interval.\
+By looking at the plot with all the three predictions we can see that the green one (prediction ARIMA(5,1,1)12) performs slightly better than the others. In addition this model is also characterized by lower values of AIC, RMSE and MAE.
+
+
+
+
