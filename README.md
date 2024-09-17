@@ -1,4 +1,4 @@
-#⚡ US Monthly Electricity Production Analysis
+# ⚡ US Monthly Electricity Production Analysis
 This project focuses on analyzing and forecasting monthly US electricity production using time series techniques. 📈🔌
 
 🔑 **Key Components:**
